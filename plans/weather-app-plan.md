@@ -234,6 +234,11 @@ Usar Open-Meteo diretamente no navegador, sem chave de API para este uso. Os exe
     ```
 
   - Mapear `id` para `City.id` (string estável), `name`, `admin1` e `country` para os campos homônimos (usar `null` quando ausentes), e `latitude`/`longitude` para coordenadas numéricas. `timezone` pode ser lido do resultado se necessário, mas a consulta de forecast usa `timezone=auto` com as coordenadas selecionadas.
+  - Incremento implementado em `src/services/weatherService.ts`:
+    `searchCities(name: string): Promise<City[]>` normaliza com `trim`, retorna
+    `[]` sem rede para entrada vazia e codifica o nome com `encodeURIComponent`.
+    Ausência de `results` representa busca sem resultados. Status HTTP não-ok
+    lança `WeatherServiceError`; o transporte usa `fetchWithTimeout`.
 - **Forecast:** `https://api.open-meteo.com/v1/forecast`
   - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada; `current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,precipitation,surface_pressure`; `daily=weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max`; `temperature_unit=celsius`; `wind_speed_unit=kmh`; `precipitation_unit=mm`; `timezone=auto`; e `forecast_days=5`.
   - `timezone=auto` faz a API retornar datas e horários no fuso da coordenada; `utc_offset_seconds` e `timezone` identificam a referência temporal retornada. `forecast_days=5` solicita hoje e os quatro dias seguintes nesse calendário local.
@@ -282,6 +287,18 @@ Usar Open-Meteo diretamente no navegador, sem chave de API para este uso. Os exe
   - Formar `WeatherData.days` percorrendo por índice os arrays `daily.time`, `daily.weather_code`, `daily.temperature_2m_min` e `daily.temperature_2m_max`: cada índice gera um `ForecastDay` com `date`, `weatherCode`, `temperatureMinC` e `temperatureMaxC`. Preservar campos ausentes como `null`; não deslocar valores entre datas quando um array estiver incompleto.
   - Mapear `daily.precipitation_probability_max` no mesmo índice para
     `precipitationProbabilityPercent` (0 a 100, ou `null` quando ausente).
+  - Incremento implementado em `src/services/weatherService.ts`:
+    `getWeather(city: City): Promise<WeatherData>` retorna condições atuais e
+    exatamente cinco dias, preservando a associação por índice e valores
+    numéricos ausentes como `null`. Ausência de `current`, `daily` ou das cinco
+    datas necessárias lança `WeatherServiceError`, assim como status HTTP
+    não-ok. Datas extras são ignoradas; o transporte usa `fetchWithTimeout`.
+
+O helper compartilhado `fetchWithTimeout` usa `AbortController` para cancelar
+o `fetch` após 10 segundos e limpa o timer no `finally`, em sucesso ou falha.
+Converte `AbortError` em `WeatherServiceError` com a mensagem
+“A requisição demorou demais.” e falhas de rede em “Falha de rede.”.
+Os erros HTTP continuam sendo tratados por cada operação, fora do helper.
 
 Montar parâmetros com `URLSearchParams`, verificar status HTTP e validar o JSON antes da normalização. `current_units` e `daily_units` descrevem as unidades da resposta e podem ser conferidos na validação; não são campos do modelo de domínio. Não depender de campos externos além dos necessários aos contratos. Antes do lançamento, confirmar nos termos oficiais do provedor os limites de uso, atribuição exigida e cobertura para as localidades previstas; essa confirmação é bloqueio de publicação.
 
@@ -291,7 +308,34 @@ Documentação oficial: [Geocoding API](https://open-meteo.com/en/docs/geocoding
 
 ## State Management
 
-### Incremento de demonstração sem API
+### Contrato do incremento de `useWeather`
+
+Conforme a revisão da spec, `src/hooks/useWeather.ts` expõe `status`
+(`idle | loading | success | error | empty`), `data: WeatherData | null`,
+`cities: City[]`, `error: string | null`, `query: string` e ações assíncronas
+`search(name)`, `selectCity(city)` e `retry()`. Este contrato unificado
+substitui, neste incremento, a proposta de estados separados abaixo.
+
+`search` normaliza com `trim`, limpa dados anteriores, busca cidades e carrega
+o clima da primeira; lista vazia termina em `empty` sem forecast. Entrada
+vazia termina em `error` com “O nome da cidade é obrigatório.”, sem rede.
+`selectCity` consulta somente o clima e preserva query/lista de cidades.
+Erros dos services são expostos por mensagem, com fallback explícito para
+rejeições sem mensagem. `retry` repete a última ação pública com seus argumentos;
+se a busca falhar no forecast, repete busca e forecast. Antes de qualquer ação,
+retry não faz nada. Cada ação limpa dados/erro anteriores e invalida operações
+mais antigas; após desmontagem, respostas pendentes são ignoradas.
+A integração em `App` usa o hook como fonte dos estados e dados; a unidade
+permanece em `useState` na UI e é passada a `CurrentWeather` e `ForecastList`,
+sem novas consultas ao alterná-la. O hook também expõe `city: City | null`,
+atualizada junto à seleção automática/ explícita, para identificar corretamente
+os dados no hero. `SearchBar` chama `search` e `ErrorState` chama `retry`.
+Os controles e textos fictícios foram removidos; o rodapé atribui a fonte à
+Open-Meteo. Após busca/retry, o foco vai ao `main` no estado terminal
+(`success`, `empty` ou `error`); mudar unidade preserva o foco.
+Testes de composição usam services mockados, e E2E interceptam ambas as APIs.
+
+### Histórico: incremento de demonstração sem API (substituído pela integração)
 
 Antes da integração com `useWeather`, `App` mantém `unit` (inicialmente
 `celsius`) e `WeatherState` (inicialmente `idle`) em memória. Um grupo visível

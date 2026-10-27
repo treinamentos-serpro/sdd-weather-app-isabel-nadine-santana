@@ -13,6 +13,17 @@ O Weather App é uma aplicação web responsiva, em português do Brasil, para c
 
 ## Functional Requirements
 
+### Revisão do incremento de orquestração
+
+Para o contrato de `useWeather` solicitado neste incremento, a busca carrega
+automaticamente o clima da primeira cidade retornada e mantém todas em
+`cities` para seleção posterior. Esta regra substitui a exigência anterior
+de seleção explícita antes de consultar o clima (FR-01 e cenários associados).
+Busca sem resultados termina em `empty`; busca vazia informa validação sem
+rede. `retry` repete a última ação pública: busca completa ou seleção de cidade.
+A integração da tela de demonstração e o controle de unidade ficam fora deste
+incremento; as demais regras de concorrência e tratamento de erros se mantêm.
+
 - **FR-01 — Buscar cidades:** Aceitar nome de cidade, opcionalmente acompanhado de região administrativa ou país; preservar acentos, espaços internos, hífens e apóstrofos; remover espaços no início e no fim; mostrar cidade, região e país retornados; exigir seleção explícita antes da consulta meteorológica. Se região e país estiverem ausentes, exibir coordenadas quando fornecidas ou “Localização não informada”; nunca selecionar automaticamente.
 - **FR-02 — Consultar condições atuais:** Após a seleção, exibir cidade, temperatura atual fornecida pelo modelo meteorológico e descrição textual localizada da condição. Mapear todos os códigos WMO suportados pelo Open-Meteo para rótulos em pt-BR, conforme a descrição oficial do código; códigos desconhecidos devem aparecer como “Condição indisponível”, sem ocultar temperaturas válidas. Cada temperatura deve ter unidade explícita; dados ausentes devem ser identificados como indisponíveis. Não apresentar estimativas do provedor como observações locais medidas. Em consultas concorrentes, somente dados da cidade selecionada mais recentemente podem atualizar a tela.
 - **FR-03 — Consultar previsão:** Exibir cinco resumos diários consecutivos, começando pela data local atual da cidade. Cada resumo deve incluir condição textual e temperaturas mínima e máxima. Aplicar o mesmo mapeamento WMO para rótulos em pt-BR. Se um campo não vier na resposta, identificá-lo como indisponível sem ocultar os demais dias; códigos desconhecidos devem aparecer como “Condição indisponível”.

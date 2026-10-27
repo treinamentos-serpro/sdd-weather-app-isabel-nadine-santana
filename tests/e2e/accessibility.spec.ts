@@ -1,5 +1,10 @@
 import type { Locator } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { mockWeatherApi, searchCity } from './weatherFixture';
+
+test.beforeEach(async ({ page }) => {
+  await mockWeatherApi(page);
+});
 
 async function contrastRatio(locator: Locator, property = 'color') {
   return locator.evaluate((element, foregroundProperty) => {
@@ -76,10 +81,17 @@ test('keyboard supports units, validation, results and retry focus', async ({ pa
   await page.keyboard.press('Enter');
   await expect(page.getByRole('main')).toBeFocused();
 
-  const demo = page.getByRole('group', { name: 'Estados de demonstração' });
-  await demo.getByRole('button', { name: 'Erro', exact: true }).focus();
+  await input.fill('Erro');
+  await input.focus();
   await page.keyboard.press('Enter');
-  await page.keyboard.press('Tab');
+  await expect(page.getByRole('main')).toBeFocused();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      json: { results: [{ id: 1, name: 'Porto', latitude: 41.15, longitude: -8.61 }] },
+    }),
+  );
+  await page.getByRole('button', { name: 'Buscar', exact: true }).focus();
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: 'Tentar novamente' })).toBeFocused();
   await page.keyboard.press('Enter');
@@ -99,14 +111,15 @@ test('text and input boundary meet AA contrast; controls have 44px touch targets
     await contrastRatio(page.getByRole('searchbox'), 'border-top-color'),
   ).toBeGreaterThanOrEqual(3);
 
-  const demo = page.getByRole('group', { name: 'Estados de demonstração' });
-  await demo.getByRole('button', { name: 'Erro', exact: true }).click();
+  await searchCity(page, 'Erro');
+  await expect(page.getByRole('alert')).toBeVisible();
   expect(await contrastRatio(page.getByRole('alert'))).toBeGreaterThanOrEqual(4.5);
   const retry = page.getByRole('button', { name: 'Tentar novamente' });
   expect(await contrastRatio(retry)).toBeGreaterThanOrEqual(4.5);
   await retry.hover();
   expect(await contrastRatio(retry)).toBeGreaterThanOrEqual(4.5);
-  await retry.click();
+  await searchCity(page, 'Porto');
+  await expect(page.getByRole('heading', { name: 'Porto', exact: true })).toBeVisible();
   expect(await contrastRatio(page.getByText('Umidade', { exact: true }))).toBeGreaterThanOrEqual(
     4.5,
   );
@@ -125,7 +138,8 @@ test('text and input boundary meet AA contrast; controls have 44px touch targets
 test('320px reflow handles 200% text and long location without card overflow', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 900 });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Sucesso', exact: true }).click();
+  await searchCity(page, 'Porto');
+  await expect(page.getByRole('heading', { name: 'Porto', exact: true })).toBeVisible();
   await page.getByRole('heading', { name: 'Porto', exact: true }).evaluate((heading) => {
     heading.textContent = 'CidadeComNomeMuitoLongoSemEspacosParaTestarRefluxo';
     const location = heading.nextElementSibling;
@@ -150,7 +164,8 @@ test('320px reflow handles 200% text and long location without card overflow', a
 test('loading animation respects reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/');
-  await page.getByRole('button', { name: 'Carregando', exact: true }).click();
+  await page.route('https://geocoding-api.open-meteo.com/**', () => {});
+  await searchCity(page, 'Porto');
   const indicator = page.getByRole('status').locator('[aria-hidden="true"]');
   await expect(indicator).toHaveCSS('animation-name', 'none');
 });

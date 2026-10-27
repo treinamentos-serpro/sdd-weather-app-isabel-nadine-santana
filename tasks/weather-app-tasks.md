@@ -220,6 +220,15 @@ sua conclusão integral dependa de todos os componentes.
 
 ## Entrega 4 — Hook e orquestração
 
+**Revisão do incremento T-07/T-08:** implementar o contrato unificado de
+`useWeather` definido na revisão da spec e no plano: busca carrega o primeiro
+resultado automaticamente; seleção posterior consulta somente forecast;
+retry repete a última ação pública, não apenas a etapa HTTP que falhou.
+Cobrir estado inicial, loading, sucesso, vazio, validação, mensagens de erro,
+retry de ambas as ações, concorrência e desmontagem com services mockados.
+O controle de unidade e a integração em `App` não fazem parte deste incremento.
+Esta revisão prevalece sobre os critérios anteriores conflitantes abaixo.
+
 ### T-07 — Implementar orquestração da busca de cidades
 
 - **Descrição:** Implementar no hook o fluxo de busca, validação, estado vazio,
@@ -383,6 +392,10 @@ sua conclusão integral dependa de todos os componentes.
 ### T-15 — Compor a tela da aplicação
 
 - **Descrição:** Integrar hook e componentes na composição principal da tela.
+- **Incremento integrado:** `App` usa `useWeather` nos cinco estados,
+  encaminha busca e retry, mantém unidade local e apresenta cidade/dados do
+  hook. Controles de demonstração removidos; testes unitários e E2E usam
+  respostas controladas em vez de depender do mock em produção.
 - **Critérios de aceite:**
   - Incremento mock: `App` compõe marca, `SearchBar`, `UnitToggle`, estados,
     hero e previsão. Controles de demonstração selecionam os cinco estados;

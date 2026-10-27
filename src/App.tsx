@@ -6,57 +6,30 @@ import EmptyState from './components/states/EmptyState';
 import ErrorState from './components/states/ErrorState';
 import LoadingState from './components/states/LoadingState';
 import UnitToggle from './components/UnitToggle';
-import type { Unit, WeatherState } from './types/weather';
-import { mockCity, mockWeatherData } from './types/weather';
-
-const demoStates = [
-  { status: 'idle', label: 'Inicial' },
-  { status: 'loading', label: 'Carregando' },
-  { status: 'empty', label: 'Sem dados' },
-  { status: 'error', label: 'Erro' },
-  { status: 'success', label: 'Sucesso' },
-] as const;
+import useWeather from './hooks/useWeather';
+import type { Unit } from './types/weather';
 
 export default function App() {
   const [unit, setUnit] = useState<Unit>('celsius');
-  const [state, setState] = useState<WeatherState>({ status: 'idle' });
+  const { status, data, city, error, search, retry } = useWeather();
   const mainRef = useRef<HTMLElement>(null);
   const focusResults = useRef(false);
 
   useEffect(() => {
-    if (focusResults.current && state.status === 'success') {
+    if (focusResults.current && status !== 'idle' && status !== 'loading') {
       mainRef.current?.focus();
       focusResults.current = false;
     }
-  }, [state]);
+  }, [status]);
 
-  function showMockWeather() {
-    setState({ status: 'success', city: mockCity, data: mockWeatherData });
-  }
-
-  function showSearchResults() {
+  function handleSearch(name: string) {
     focusResults.current = true;
-    showMockWeather();
+    void search(name);
   }
 
-  function selectDemoState(status: WeatherState['status']) {
-    switch (status) {
-      case 'idle':
-        setState({ status: 'idle' });
-        break;
-      case 'loading':
-        setState({ status, city: mockCity });
-        break;
-      case 'empty':
-        setState({ status, city: mockCity, message: 'Dados meteorológicos indisponíveis' });
-        break;
-      case 'error':
-        setState({ status, city: mockCity, error: { kind: 'network' } });
-        break;
-      case 'success':
-        showMockWeather();
-        break;
-    }
+  function handleRetry() {
+    focusResults.current = true;
+    void retry();
   }
 
   return (
@@ -78,29 +51,13 @@ export default function App() {
             </h1>
             <UnitToggle unit={unit} onChange={setUnit} />
           </div>
-          <SearchBar onSearch={showSearchResults} disabled={state.status === 'loading'} />
-          <p className="text-sm text-slate-300">
-            Demonstração sem API: qualquer busca válida mostra dados fictícios de Porto, Portugal,
-            com datas fixas. Os controles abaixo simulam os estados da tela.
-          </p>
-          <div role="group" aria-label="Estados de demonstração" className="flex flex-wrap gap-2">
-            {demoStates.map(({ status, label }) => (
-              <button
-                key={status}
-                type="button"
-                aria-pressed={state.status === status}
-                onClick={() => selectDemoState(status)}
-                className="min-h-11 min-w-11 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:ring-offset-night-900 aria-pressed:bg-accent-400 aria-pressed:text-night-900"
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <SearchBar onSearch={handleSearch} disabled={status === 'loading'} />
         </header>
         <div aria-live="polite" aria-atomic="true" className="sr-only">
-          {state.status === 'empty' && state.message}
-          {state.status === 'success' &&
-            `Clima de ${state.city.name} disponível. Temperaturas em ${unit === 'celsius' ? 'Celsius' : 'Fahrenheit'}.`}
+          {status === 'empty' && 'Nenhuma cidade encontrada'}
+          {status === 'success' &&
+            city &&
+            `Clima de ${city.name} disponível. Temperaturas em ${unit === 'celsius' ? 'Celsius' : 'Fahrenheit'}.`}
         </div>
         <main
           id="main-content"
@@ -109,34 +66,38 @@ export default function App() {
           tabIndex={-1}
           className="space-y-8 rounded-xl [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-4 focus-visible:ring-offset-night-900"
         >
-          {state.status === 'idle' && (
+          {status === 'idle' && (
             <EmptyState
               title="Consulte o clima de uma cidade"
-              hint="Digite uma cidade e selecione Buscar para visualizar o exemplo de Porto."
+              hint="Digite uma cidade e selecione Buscar para consultar o clima."
             />
           )}
-          {state.status === 'loading' && <LoadingState message="Carregando o clima de Porto..." />}
-          {state.status === 'empty' && (
+          {status === 'loading' && <LoadingState message="Carregando dados meteorológicos..." />}
+          {status === 'empty' && (
             <EmptyState
-              title={state.message}
-              hint="Tente buscar novamente para ver os dados de exemplo."
+              title="Nenhuma cidade encontrada"
+              hint="Verifique o nome ou tente buscar outra cidade."
             />
           )}
-          {state.status === 'error' && (
+          {status === 'error' && (
             <ErrorState
-              message="Não foi possível carregar o clima. Tente novamente."
-              onRetry={showSearchResults}
+              message={error ?? 'Não foi possível carregar o clima. Tente novamente.'}
+              onRetry={handleRetry}
             />
           )}
-          {state.status === 'success' && (
+          {status === 'success' && data && city && (
             <>
-              <CurrentWeather city={state.city} current={state.data.current} unit={unit} />
-              <ForecastList days={state.data.days} unit={unit} />
+              <CurrentWeather city={city} current={data.current} unit={unit} />
+              <ForecastList days={data.days} unit={unit} />
             </>
           )}
         </main>
         <footer className="border-t border-white/10 pt-4 text-sm text-slate-300">
-          Interface em desenvolvimento · Dados fictícios, não use como previsão real.
+          Dados meteorológicos fornecidos pela{' '}
+          <a className="underline" href="https://open-meteo.com/">
+            Open-Meteo
+          </a>
+          .
         </footer>
       </div>
     </div>

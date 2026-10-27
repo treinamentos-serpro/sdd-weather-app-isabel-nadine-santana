@@ -1,128 +1,135 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import App from '../../src/App';
-import { mockWeatherData } from '../../src/types/weather';
+import { getWeather, searchCities, WeatherServiceError } from '../../src/services/weatherService';
+import { mockCity, mockWeatherData, type WeatherData } from '../../src/types/weather';
+
+vi.mock('../../src/services/weatherService', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/weatherService')>()),
+  searchCities: vi.fn(),
+  getWeather: vi.fn(),
+}));
+
+beforeEach(() => {
+  vi.resetAllMocks();
+  vi.mocked(searchCities).mockResolvedValue([{ ...mockCity, name: 'Lisboa' }]);
+  vi.mocked(getWeather).mockResolvedValue(mockWeatherData);
+});
+
+async function submitSearch(name = 'Lisboa') {
+  const user = userEvent.setup();
+  await user.clear(screen.getByLabelText('Nome da cidade'));
+  await user.type(screen.getByLabelText('Nome da cidade'), `${name}{Enter}`);
+  return user;
+}
 
 describe('App', () => {
-  it('starts idle with the header, search and Celsius selected', () => {
+  it('starts idle with Celsius and no demo controls or network calls', () => {
     render(<App />);
-
     expect(screen.getByRole('heading', { name: 'SDD Weather' })).toBeInTheDocument();
-    expect(screen.getByRole('search')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Consulte o clima de uma cidade' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '°C' })).toHaveAttribute('aria-pressed', 'true');
     expect(
-      screen.getByRole('heading', { name: 'Consulte o clima de uma cidade' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Porto' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-  });
-
-  it('shows only the selected demo state and recovers from an error with retry', async () => {
-    const user = userEvent.setup();
-    render(<App />);
-    const demo = within(screen.getByRole('group', { name: 'Estados de demonstração' }));
-
-    await user.click(demo.getByRole('button', { name: 'Sucesso' }));
-    expect(screen.getByRole('heading', { name: 'Porto' })).toBeInTheDocument();
-    expect(screen.getAllByRole('article')).toHaveLength(5);
-
-    await user.click(demo.getByRole('button', { name: 'Carregando' }));
-    expect(screen.getByRole('status')).toHaveTextContent('Carregando o clima de Porto...');
-    expect(screen.getByLabelText('Nome da cidade')).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Buscar' })).toBeDisabled();
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Porto' })).not.toBeInTheDocument();
-
-    await user.click(demo.getByRole('button', { name: 'Sem dados' }));
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Dados meteorológicos indisponíveis' }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('Nome da cidade')).toBeEnabled();
-
-    await user.click(demo.getByRole('button', { name: 'Erro' }));
-    expect(screen.getByRole('alert')).toHaveTextContent('Não foi possível carregar o clima.');
-    expect(
-      screen.queryByRole('heading', { name: 'Dados meteorológicos indisponíveis' }),
+      screen.queryByRole('group', { name: 'Estados de demonstração' }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
-    expect(screen.getByRole('main')).toHaveFocus();
-    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Porto' })).toBeInTheDocument();
-    expect(demo.getByRole('button', { name: 'Sucesso' })).toHaveAttribute('aria-pressed', 'true');
-
-    await user.click(demo.getByRole('button', { name: 'Inicial' }));
-    expect(screen.queryByRole('article')).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Consulte o clima de uma cidade' }),
-    ).toBeInTheDocument();
+    expect(searchCities).not.toHaveBeenCalled();
+    expect(getWeather).not.toHaveBeenCalled();
   });
 
-  it('uses the Porto mock for any valid search and keeps empty input idle', async () => {
+  it('validates empty input without calling the service', async () => {
     const user = userEvent.setup();
     render(<App />);
-
     await user.click(screen.getByRole('button', { name: 'Buscar' }));
     expect(screen.getByRole('alert')).toHaveTextContent('O nome da cidade é obrigatório.');
-    expect(screen.queryByRole('heading', { name: 'Porto' })).not.toBeInTheDocument();
-
-    await user.type(screen.getByLabelText('Nome da cidade'), '  Lisboa  {Enter}');
-    expect(screen.getByRole('main')).toHaveFocus();
-    expect(screen.getByRole('heading', { name: 'Porto' })).toBeInTheDocument();
-    expect(
-      screen.getByText(/qualquer busca válida mostra dados fictícios de Porto/),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText('Nome da cidade')).toHaveFocus();
+    expect(searchCities).not.toHaveBeenCalled();
   });
 
-  it('announces empty and successful results without moving focus from demo controls or units', async () => {
-    const user = userEvent.setup();
-    const { container } = render(<App />);
-    const announcement = container.querySelector('[aria-live="polite"]');
-    expect(announcement).toBeEmptyDOMElement();
-    const demo = within(screen.getByRole('group', { name: 'Estados de demonstração' }));
-
-    await user.click(demo.getByRole('button', { name: 'Sem dados' }));
-    expect(announcement).toHaveTextContent('Dados meteorológicos indisponíveis');
-    expect(demo.getByRole('button', { name: 'Sem dados' })).toHaveFocus();
-
-    await user.click(demo.getByRole('button', { name: 'Sucesso' }));
-    expect(demo.getByRole('button', { name: 'Sucesso' })).toHaveFocus();
-    expect(announcement).toHaveTextContent('Clima de Porto disponível. Temperaturas em Celsius.');
-
-    await user.click(screen.getByRole('button', { name: '°F' }));
-    expect(screen.getByRole('button', { name: '°F' })).toHaveFocus();
-    expect(announcement).toHaveTextContent(
-      'Clima de Porto disponível. Temperaturas em Fahrenheit.',
+  it('shows loading exclusively until forecast resolves, then presents the returned city', async () => {
+    let resolve!: (data: WeatherData) => void;
+    vi.mocked(getWeather).mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
     );
+    render(<App />);
+    await submitSearch('  Lisboa  ');
+    expect(screen.getByRole('status')).toHaveTextContent('Carregando dados meteorológicos...');
+    expect(screen.getByRole('button', { name: 'Buscar' })).toBeDisabled();
+    expect(screen.getByLabelText('Nome da cidade')).toBeDisabled();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('heading', { name: 'Consulte o clima de uma cidade' }),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      resolve(mockWeatherData);
+    });
+    expect(screen.getByRole('heading', { name: 'Lisboa' })).toBeInTheDocument();
+    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(searchCities).toHaveBeenCalledExactlyOnceWith('Lisboa');
   });
 
-  it('converts all eleven temperatures on render and preserves UI unit across states', async () => {
-    const user = userEvent.setup();
+  it('renders empty distinctly from error and announces the result', async () => {
+    vi.mocked(searchCities).mockResolvedValueOnce([]);
+    const { container } = render(<App />);
+    await submitSearch();
+    expect(screen.getByRole('heading', { name: 'Nenhuma cidade encontrada' })).toBeInTheDocument();
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      'Nenhuma cidade encontrada',
+    );
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(getWeather).not.toHaveBeenCalled();
+  });
+
+  it('shows service error and retries the last search through ErrorState', async () => {
+    vi.mocked(searchCities).mockRejectedValueOnce(new WeatherServiceError('Falha de rede.'));
+    render(<App />);
+    const user = await submitSearch();
+    expect(screen.getByRole('alert')).toHaveTextContent('Falha de rede.');
+    expect(screen.queryByRole('article')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+    await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
+    expect(screen.getByRole('heading', { name: 'Lisboa' })).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveFocus();
+    expect(searchCities).toHaveBeenNthCalledWith(2, 'Lisboa');
+  });
+
+  it('keeps UI unit through errors and retry, converts all temperatures without fetching, and resets on remount', async () => {
     const snapshot = structuredClone(mockWeatherData);
-    const { unmount } = render(<App />);
-    const demo = within(screen.getByRole('group', { name: 'Estados de demonstração' }));
-    await user.click(demo.getByRole('button', { name: 'Sucesso' }));
+    const { container, unmount } = render(<App />);
+    const user = await submitSearch();
     const main = within(screen.getByRole('main'));
     expect(main.getAllByText(/°C$/)).toHaveLength(11);
-
     await user.click(screen.getByRole('button', { name: '°F' }));
     expect(main.getAllByText(/°F$/)).toHaveLength(11);
-    expect(main.queryByText(/°C$/)).not.toBeInTheDocument();
     expect(main.getByText('65,3 °F')).toBeInTheDocument();
     expect(main.getByText('68 °F')).toBeInTheDocument();
-    expect(main.getByText('12,5 km/h')).toBeInTheDocument();
-    expect(main.getByText('100 %')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '°F' })).toHaveFocus();
+    expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
+      'Clima de Lisboa disponível. Temperaturas em Fahrenheit.',
+    );
+    expect(searchCities).toHaveBeenCalledTimes(1);
+    expect(getWeather).toHaveBeenCalledTimes(1);
 
-    await user.click(demo.getByRole('button', { name: 'Erro' }));
+    vi.mocked(getWeather).mockRejectedValueOnce(
+      new WeatherServiceError('A requisição demorou demais.'),
+    );
+    await submitSearch('Porto');
+    expect(screen.getByRole('alert')).toHaveTextContent('A requisição demorou demais.');
+    expect(main.queryByRole('article')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(main.getAllByText(/°F$/)).toHaveLength(11);
     await user.click(screen.getByRole('button', { name: '°C' }));
     expect(main.getAllByText(/°C$/)).toHaveLength(11);
     expect(mockWeatherData).toEqual(snapshot);
-
-    await user.click(screen.getByRole('button', { name: '°F' }));
     unmount();
     render(<App />);
     expect(screen.getByRole('button', { name: '°C' })).toHaveAttribute('aria-pressed', 'true');
