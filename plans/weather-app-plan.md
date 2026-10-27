@@ -50,8 +50,12 @@ src/
     CityResults.tsx      # resultados e seleção explícita da cidade
     CurrentWeather.tsx   # condições atuais e referência temporal
     ForecastList.tsx     # cinco resumos diários
+    ForecastCard.tsx     # apresentação de um dia da previsão
     UnitToggle.tsx       # controle da unidade apresentada
-    StatusMessage.tsx    # loading, vazio e erros
+    states/
+      LoadingState.tsx   # status de carregamento
+      ErrorState.tsx     # mensagem de erro e retry manual
+      EmptyState.tsx     # título e dica para resultado vazio
   hooks/
     useWeather.ts        # estado e coordenação dos fluxos da tela
   services/
@@ -60,7 +64,8 @@ src/
   lib/
     temperature.ts       # conversão e formatação da temperatura
     time.ts              # formatação de datas e referência/fuso
-    weatherCode.ts       # rótulos pt-BR para códigos WMO
+    format.ts            # rótulo do dia e data local em pt-BR
+    weatherCodes.ts      # rótulos pt-BR e ícones decorativos para códigos WMO
   types/
     weather.ts           # City, CurrentWeather, ForecastDay e WeatherData
 tests/
@@ -70,6 +75,13 @@ tests/
 ```
 
 Manter `App.tsx` como composição da tela, sem lógica de transporte ou regras de domínio. `useWeather` coordena busca, seleção, consulta e estados; serviços são o único ponto de acesso à API; funções em `lib/` recebem valores e retornam resultados sem alterar estado ou fazer I/O. Componentes recebem dados e callbacks tipados, permitindo renderizá-los com props controladas nos testes. Não criar subcamadas ou abstrações genéricas sem necessidade.
+
+Estados de apresentação são separados em três componentes sem acesso a dados:
+`LoadingState` recebe `message` opcional (padrão “Carregando...”) e usa
+`role="status"`; `ErrorState` recebe `message` e `onRetry`, anuncia a mensagem
+com `role="alert"` e tem botão nativo “Tentar novamente”; `EmptyState` recebe
+`title` e `hint`, sem indicar falha nem oferecer retry. O chamador escolhe a
+mensagem de busca, clima ou timeout e renderiza apenas o estado atual.
 
 **Rastreabilidade:** FR-01 a FR-06; NFR-04 e NFR-06.
 
@@ -92,6 +104,10 @@ export interface City {
 export interface CurrentWeather {
   temperatureC: number | null;
   weatherCode: number | null;
+  humidityPercent: number | null;
+  windSpeedKmh: number | null;
+  precipitationMm: number | null;
+  pressureHpa: number | null;
   referenceTime: string | null;
   timezone: string | null;
   utcOffsetSeconds: number | null;
@@ -102,6 +118,7 @@ export interface ForecastDay {
   weatherCode: number | null;
   temperatureMinC: number | null;
   temperatureMaxC: number | null;
+  precipitationProbabilityPercent: number | null;
 }
 
 export interface WeatherData {
@@ -129,6 +146,25 @@ export type WeatherState =
 O mapeamento de condições deve cobrir todos os códigos WMO suportados pelo Open-Meteo (0, 1–3, 45, 48, 51–57, 61–67, 71–77, 80–82, 85–86, 95, 96 e 99), conforme as descrições oficiais em pt-BR. Código ausente ou desconhecido é exibido como “Condição indisponível” e não invalida temperaturas disponíveis.
 
 `referenceTime` mantém o timestamp de referência fornecido pelo provedor, não a hora de recebimento da resposta. `date` representa a data local retornada para cada dia.
+
+O hero recebe `city`, `current` e `unit`. Usa `lib/temperature` para converter
+e formatar temperaturas e `lib/weatherCodes` para rótulos e ícones decorativos
+(ocultos da árvore de acessibilidade, pois a condição já tem texto).
+Umidade relativa, vento a 10 m, precipitação e pressão à superfície usam,
+respectivamente, %, km/h, mm e hPa, independentemente da unidade de temperatura.
+Campos ausentes permanecem `null`; zero é um valor válido. O mock inclui
+valores fictícios das quatro métricas. `lib/time` formata a referência do
+provedor, preservando timestamps locais sem offset e convertendo timestamps
+com offset para o fuso informado, sem depender do fuso do navegador.
+
+`ForecastList` recebe `days: ForecastDay[]` e `unit: Unit`, preserva a ordem
+recebida e compõe um `ForecastCard` por data (chave estável). O card recebe
+`day` e `unit`, usa `lib/format.formatDayLabel` para dia da semana e data
+pt-BR (interpretando a data local sem deslocamento pelo fuso do navegador),
+`lib/weatherCodes` para ícone decorativo e condição textual e
+`lib/temperature` para máxima/mínima. A probabilidade máxima diária de
+precipitação usa %; valores ausentes permanecem `null`. Lista vazia exibe
+mensagem de indisponibilidade. Grid: `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`.
 
 **Rastreabilidade:** FR-01, FR-02, FR-03 e FR-06; AC-06 a AC-09, AC-15 a AC-20.
 
@@ -199,7 +235,7 @@ Usar Open-Meteo diretamente no navegador, sem chave de API para este uso. Os exe
 
   - Mapear `id` para `City.id` (string estável), `name`, `admin1` e `country` para os campos homônimos (usar `null` quando ausentes), e `latitude`/`longitude` para coordenadas numéricas. `timezone` pode ser lido do resultado se necessário, mas a consulta de forecast usa `timezone=auto` com as coordenadas selecionadas.
 - **Forecast:** `https://api.open-meteo.com/v1/forecast`
-  - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada; `current=temperature_2m,weather_code`; `daily=weather_code,temperature_2m_min,temperature_2m_max`; `temperature_unit=celsius`; `timezone=auto`; e `forecast_days=5`.
+  - Parâmetros relevantes: `latitude` e `longitude` da cidade selecionada; `current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m,precipitation,surface_pressure`; `daily=weather_code,temperature_2m_min,temperature_2m_max,precipitation_probability_max`; `temperature_unit=celsius`; `wind_speed_unit=kmh`; `precipitation_unit=mm`; `timezone=auto`; e `forecast_days=5`.
   - `timezone=auto` faz a API retornar datas e horários no fuso da coordenada; `utc_offset_seconds` e `timezone` identificam a referência temporal retornada. `forecast_days=5` solicita hoje e os quatro dias seguintes nesse calendário local.
   - Exemplo resumido:
 
@@ -209,30 +245,43 @@ Usar Open-Meteo diretamente no navegador, sem chave de API para este uso. Os exe
       "timezone": "America/Sao_Paulo",
       "current_units": {
         "temperature_2m": "°C",
-        "weather_code": "wmo code"
+        "weather_code": "wmo code",
+        "relative_humidity_2m": "%",
+        "wind_speed_10m": "km/h",
+        "precipitation": "mm",
+        "surface_pressure": "hPa"
       },
       "current": {
         "time": "2026-10-27T14:15",
         "temperature_2m": 21.4,
-        "weather_code": 2
+        "weather_code": 2,
+        "relative_humidity_2m": 65,
+        "wind_speed_10m": 12.5,
+        "precipitation": 0,
+        "surface_pressure": 1013.2
       },
       "daily_units": {
         "time": "iso8601",
         "weather_code": "wmo code",
         "temperature_2m_min": "°C",
-        "temperature_2m_max": "°C"
+        "temperature_2m_max": "°C",
+        "precipitation_probability_max": "%"
       },
       "daily": {
         "time": ["2026-10-27", "2026-10-28", "2026-10-29", "2026-10-30", "2026-10-31"],
         "weather_code": [51, 51, 81, 81, 95],
         "temperature_2m_min": [12.5, 13.9, 15.4, 16.5, 16.8],
-        "temperature_2m_max": [21.9, 23.7, 21.0, 25.4, 24.3]
+        "temperature_2m_max": [21.9, 23.7, 21.0, 25.4, 24.3],
+        "precipitation_probability_max": [30, 40, 80, 90, 100]
       }
     }
     ```
 
   - Mapear `current.temperature_2m` para `CurrentWeather.temperatureC`, `current.weather_code` para `weatherCode` e `current.time` para `referenceTime`. Mapear os campos de topo `timezone` e `utc_offset_seconds` para `CurrentWeather.timezone` e `utcOffsetSeconds`.
+  - Mapear `current.relative_humidity_2m`, `wind_speed_10m`, `precipitation` e `surface_pressure` para `humidityPercent`, `windSpeedKmh`, `precipitationMm` e `pressureHpa`. Preservar cada valor ausente como `null`; conferir as unidades previstas antes de normalizar.
   - Formar `WeatherData.days` percorrendo por índice os arrays `daily.time`, `daily.weather_code`, `daily.temperature_2m_min` e `daily.temperature_2m_max`: cada índice gera um `ForecastDay` com `date`, `weatherCode`, `temperatureMinC` e `temperatureMaxC`. Preservar campos ausentes como `null`; não deslocar valores entre datas quando um array estiver incompleto.
+  - Mapear `daily.precipitation_probability_max` no mesmo índice para
+    `precipitationProbabilityPercent` (0 a 100, ou `null` quando ausente).
 
 Montar parâmetros com `URLSearchParams`, verificar status HTTP e validar o JSON antes da normalização. `current_units` e `daily_units` descrevem as unidades da resposta e podem ser conferidos na validação; não são campos do modelo de domínio. Não depender de campos externos além dos necessários aos contratos. Antes do lançamento, confirmar nos termos oficiais do provedor os limites de uso, atribuição exigida e cobertura para as localidades previstas; essa confirmação é bloqueio de publicação.
 
@@ -241,6 +290,30 @@ Documentação oficial: [Geocoding API](https://open-meteo.com/en/docs/geocoding
 **Rastreabilidade:** FR-01, FR-02, FR-03 e FR-06; AC-01, AC-07 e AC-16; riscos e questão aberta da spec sobre limites, atribuição e cobertura.
 
 ## State Management
+
+### Incremento de demonstração sem API
+
+Antes da integração com `useWeather`, `App` mantém `unit` (inicialmente
+`celsius`) e `WeatherState` (inicialmente `idle`) em memória. Um grupo visível
+“Estados de demonstração” seleciona idle/loading/empty/error/success.
+A busca válida e o retry mostram exclusivamente `mockCity` e
+`mockWeatherData` de Porto, independentemente do texto consultado; essa
+limitação é informada na tela. Não há rede, atraso artificial, seleção
+automática de resultado real ou persistência. A busca fica desabilitada
+durante loading; os controles de demonstração permanecem disponíveis.
+A unidade não muda ao alternar estados; componentes derivam temperaturas
+na renderização sem alterar o mock. `src/main.tsx` monta a aplicação e
+`src/index.css` carrega Tailwind e os estilos globais mínimos.
+Este incremento demonstra a UI, não conclui busca/seleção ou integração com API.
+
+Na composição, busca válida e retry movem o foco ao `main` rotulado após a
+renderização dos resultados; controles de demonstração e de unidade preservam
+o foco. Uma região persistente `aria-live="polite"` anuncia vazio, sucesso e
+unidade. Busca vazia devolve o foco ao input inválido. Controles de unidade
+e demonstração têm alvo mínimo de 44 × 44 CSS px e anel com offset; a borda
+do input deve manter contraste de pelo menos 3:1. Os cards preservam o grid
+de duas colunas em 320 px, quebrando textos longos e reduzindo padding/ícone
+na base para suportar fonte ampliada sem transbordar.
 
 Manter o estado da tela local em `useWeather`, sem biblioteca global. O hook expõe estado e ações para `App`/componentes. Separar o estado de busca do estado meteorológico para que cada fluxo tenha loading e erro próprios.
 

@@ -112,6 +112,9 @@ sua conclusão integral dependa de todos os componentes.
     com query/resultados ou cidade/dados/erro conforme o status.
   - `RequestError` distingue `network`, `api`, `timeout` e `invalid-response`;
     `tsc` conclui sem erros de tipo.
+  - `CurrentWeather` inclui `humidityPercent`, `windSpeedKmh`,
+    `precipitationMm` e `pressureHpa` como `number | null`; o mock fornece
+    valores fictícios coerentes.
 - **Rastreabilidade:** FR-01 a FR-06; AC-01, AC-06 a AC-09, AC-15 a AC-20.
 - **Dependências:** Nenhuma.
 - **Arquivos prováveis:** `src/types/weather.ts`
@@ -139,6 +142,8 @@ sua conclusão integral dependa de todos os componentes.
 
 - **Descrição:** Mapear os códigos WMO suportados para descrições em pt-BR.
 - **Critérios de aceite:**
+  - `getWeatherCondition` retorna rótulo e ícone decorativo para cada código
+    suportado; código ausente/desconhecido tem ícone neutro, nunca sol.
   - A função retorna o rótulo pt-BR correspondente à descrição oficial para
     cada código `0, 1, 2, 3, 45, 48, 51–57, 61–67, 71–77, 80–82, 85–86, 95,
     96, 99`.
@@ -146,7 +151,7 @@ sua conclusão integral dependa de todos os componentes.
     indisponível”; o mapeamento não altera valores de temperatura.
 - **Rastreabilidade:** FR-02 e FR-03; AC-07, AC-09 e AC-19.
 - **Dependências:** T-01.
-- **Arquivos prováveis:** `src/lib/weatherCode.ts`
+- **Arquivos prováveis:** `src/lib/weatherCodes.ts`
 - **Tipo:** Data
 
 ### T-04 — Formatar datas e referência temporal
@@ -154,6 +159,8 @@ sua conclusão integral dependa de todos os componentes.
 - **Descrição:** Criar funções puras para apresentar datas locais e timestamp
   do provedor com fuso inequívoco.
 - **Critérios de aceite:**
+  - `lib/format.formatDayLabel` apresenta dia da semana e data local em
+    pt-BR, sem depender do fuso do navegador ou do relógio atual.
   - A data `2026-10-27` é formatada como `27/10/2026` e o timestamp
     `2026-10-27T14:30` com `America/Sao_Paulo` resulta em
     `27/10/2026 às 14:30` no fuso informado.
@@ -191,13 +198,18 @@ sua conclusão integral dependa de todos os componentes.
   dias para as coordenadas selecionadas.
 - **Critérios de aceite:**
   - A URL contém latitude/longitude da cidade, `temperature_unit=celsius`,
-    `timezone=auto`, `forecast_days=5`, `current=temperature_2m,weather_code`
-    e os três parâmetros `daily` definidos no plano.
+    `timezone=auto`, `forecast_days=5`, `wind_speed_unit=kmh`,
+    `precipitation_unit=mm`, os seis campos `current` e os quatro campos
+    `daily` definidos no plano.
   - Temperatura/código/horário atuais, timezone e offset são mapeados para os
     campos correspondentes do contrato; status não-2xx, rede, timeout e
     estrutura inválida são diferenciados.
+  - Umidade, vento a 10 m, precipitação e pressão à superfície são mapeados
+    para os quatro campos anuláveis do contrato, nas unidades do plano.
   - Cinco índices diários geram cinco itens com a mesma data de origem; array
     curto ou valor ausente gera `null` somente para o campo/índice ausente.
+  - `daily.precipitation_probability_max` é normalizado por índice como
+    `ForecastDay.precipitationProbabilityPercent: number | null` (0 a 100).
   - Payload parcial com pelo menos a estrutura necessária retorna dados
     parciais; nenhum campo ausente vira zero ou valor anterior.
 - **Rastreabilidade:** FR-02, FR-03, FR-05 e FR-06; AC-07 a AC-09,
@@ -261,7 +273,7 @@ sua conclusão integral dependa de todos os componentes.
     mensagem de que o nome da cidade é obrigatório.
 - **Rastreabilidade:** FR-01; AC-01, AC-02, AC-04 e AC-05; NFR-04 e NFR-06.
 - **Dependências:** T-07.
-- **Arquivos prováveis:** `src/components/SearchForm.tsx`
+- **Arquivos prováveis:** `src/components/SearchBar.tsx` (nome adotado na implementação)
 - **Tipo:** UI
 
 ### T-10 — Exibir e selecionar resultados de cidades
@@ -285,6 +297,10 @@ sua conclusão integral dependa de todos os componentes.
 - **Descrição:** Apresentar loading, estados vazios e erros de busca/clima com
   retry acessível.
 - **Critérios de aceite:**
+  - Componentes independentes em `components/states/`: `LoadingState` com
+    `message` opcional e `role="status"`; `ErrorState` com `message` e
+    `onRetry`; `EmptyState` com `title` e `hint`. O retry suporta teclado e
+    não submete formulários; o indicador respeita movimento reduzido.
   - Estado `empty` de busca exibe “Nenhuma cidade encontrada” sem mensagem de
     falha; estado `error` de busca exibe “Não foi possível concluir a busca.
     Tente novamente.”.
@@ -295,7 +311,7 @@ sua conclusão integral dependa de todos os componentes.
     quando o estado seguinte deixa de ser `loading`.
 - **Rastreabilidade:** FR-05; AC-03, AC-12 a AC-14; NFR-04 e NFR-06.
 - **Dependências:** T-07, T-08.
-- **Arquivos prováveis:** `src/components/StatusMessage.tsx`
+- **Arquivos prováveis:** `src/components/states/LoadingState.tsx`, `src/components/states/ErrorState.tsx`, `src/components/states/EmptyState.tsx`
 - **Tipo:** UI
 
 ### T-12 — Exibir condições atuais e referência temporal
@@ -303,6 +319,11 @@ sua conclusão integral dependa de todos os componentes.
 - **Descrição:** Apresentar cidade, condição atual, temperatura e referência dos
   dados do provedor.
 - **Critérios de aceite:**
+  - Hero controlado por `city`, `current` e `unit`, com temperatura em destaque,
+    ícone decorativo de `lib/weatherCodes` e formatação de `lib/temperature`.
+  - Exibe umidade (%), vento (km/h), precipitação (mm) e pressão (hPa), com
+    “Indisponível” por campo nulo, preservando zeros e valores das outras
+    métricas ao alternar a unidade de temperatura.
   - Fixture de Lisboa com `18 °C` e WMO `2` exibe “Lisboa, Portugal”,
     “18 °C” e “Parcialmente nublado”.
   - Temperatura `null` exibe indicação de indisponibilidade, não `0 °C`; código
@@ -323,6 +344,12 @@ sua conclusão integral dependa de todos os componentes.
 - **Descrição:** Renderizar os cinco resumos diários locais, mantendo campos
   ausentes explícitos.
 - **Critérios de aceite:**
+  - `ForecastList` recebe `days` e `unit`; `ForecastCard` recebe `day` e
+    `unit`. O grid usa `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`; lista vazia
+    informa indisponibilidade.
+  - Cards usam `lib/format` para dia da semana/data, ícone decorativo e
+    condição de `lib/weatherCodes`, temperaturas de `lib/temperature` e
+    probabilidade máxima diária em %, preservando 0/100 e identificando `null`.
   - Fixture de 27/10/2026 a 31/10/2026 renderiza exatamente cinco itens nessa
     ordem, começando pela data local recebida.
   - Cada item mostra data, condição e temperaturas mínima/máxima com unidade;
@@ -332,7 +359,7 @@ sua conclusão integral dependa de todos os componentes.
     renderizada junto à data do mesmo índice, sem troca entre dias.
 - **Rastreabilidade:** FR-03; AC-09, AC-15 e AC-19.
 - **Dependências:** T-02, T-03, T-04, T-08.
-- **Arquivos prováveis:** `src/components/ForecastList.tsx`
+- **Arquivos prováveis:** `src/components/ForecastList.tsx`, `src/components/ForecastCard.tsx`
 - **Tipo:** UI
 
 ### T-14 — Criar controle de unidade
@@ -357,6 +384,13 @@ sua conclusão integral dependa de todos os componentes.
 
 - **Descrição:** Integrar hook e componentes na composição principal da tela.
 - **Critérios de aceite:**
+  - Incremento mock: `App` compõe marca, `SearchBar`, `UnitToggle`, estados,
+    hero e previsão. Controles de demonstração selecionam os cinco estados;
+    busca e retry mostram Porto, sem rede/atraso. Unidade começa em Celsius,
+    permanece ao alternar estados e é aplicada na renderização.
+  - `main.tsx` e `index.css` permitem executar/buildar a UI com Tailwind.
+    Testes cobrem estados exclusivos, busca, retry, unidades e responsividade.
+    Integração real com hook/busca/seleção continua pendente.
   - A aplicação monta sem erro e TypeScript compila; `App.tsx` passa estado e
     callbacks tipados aos componentes sem declarar `fetch` ou conversão WMO/
     temperatura.
@@ -367,13 +401,17 @@ sua conclusão integral dependa de todos os componentes.
     vez.
 - **Rastreabilidade:** FR-01 a FR-06; AC-01 a AC-20.
 - **Dependências:** T-09, T-10, T-11, T-12, T-13, T-14.
-- **Arquivos prováveis:** `src/App.tsx`
+- **Arquivos prováveis:** `src/App.tsx`, `src/main.tsx`, `src/index.css`
 - **Tipo:** UI
 
 ### T-16 — Ajustar layout responsivo
 
 - **Descrição:** Ajustar estilos da tela para a faixa de viewports suportada.
 - **Critérios de aceite:**
+  - Regressão mock em `tests/e2e/accessibility.spec.ts`: em 320 px com fonte
+    a 200%, nomes longos e cards não transbordam seus contêineres. O teste
+    complementa a verificação de largura do documento (que não detecta
+    sobreposição interna aos cards).
   - Em larguras de viewport 320, 375, 768, 1024 e 1440 CSS px, `scrollWidth`
     do documento não excede `clientWidth`.
   - Em cada largura, busca, resultados, estado de erro e cinco previsões estão
@@ -495,7 +533,7 @@ sua conclusão integral dependa de todos os componentes.
   - A suíte do arquivo passa isoladamente.
 - **Rastreabilidade:** FR-01; AC-01, AC-02, AC-04 e AC-05; NFR-04.
 - **Dependências:** T-09.
-- **Arquivos prováveis:** `tests/unit/SearchForm.test.tsx`
+- **Arquivos prováveis:** `tests/unit/SearchBar.test.tsx`
 - **Tipo:** Test
 
 ### T-24 — Testar resultados de cidades
@@ -527,16 +565,18 @@ sua conclusão integral dependa de todos os componentes.
   - Acionar retry chama o callback uma vez; ao renderizar o estado terminal
     seguinte, o indicador de loading não permanece visível.
   - Testes usam Testing Library e props controladas, sem service ou rede; a
-    suíte `tests/unit/StatusMessage.test.tsx` passa isoladamente via Vitest.
+    suíte `tests/unit/States.test.tsx` passa isoladamente via Vitest.
 - **Rastreabilidade:** FR-05; AC-03, AC-12 a AC-14; NFR-04.
 - **Dependências:** T-11.
-- **Arquivos prováveis:** `tests/unit/StatusMessage.test.tsx`
+- **Arquivos prováveis:** `tests/unit/States.test.tsx`
 - **Tipo:** Test
 
 ### T-26 — Testar apresentação das condições atuais
 
 - **Descrição:** Testar campos meteorológicos atuais e referência temporal na UI.
 - **Critérios de aceite:**
+  - Testes cobrem as quatro métricas, valores zero/nulos, conversão C/F e
+    ícone decorativo sem duplicar o texto acessível da condição.
   - Testes verificam fixture de 18 °C/WMO 2, temperatura ausente, código WMO
     desconhecido e preservação da temperatura válida.
   - Fixture temporal fixa confirma texto exato “Dados referentes a
@@ -552,6 +592,8 @@ sua conclusão integral dependa de todos os componentes.
 
 - **Descrição:** Testar os cinco dias e os campos de previsão na interface.
 - **Critérios de aceite:**
+  - Testes cobrem probabilidade 0/100/nula, lista vazia, conversão C/F,
+    ícones decorativos, grid responsivo e rótulos sem deslocamento de data.
   - Fixture de cinco datas renderiza exatamente cinco itens na ordem fornecida
     e confere data/temperaturas distintas para cada item.
   - Testes verificam mínima ausente em um dia sem ocultar máxima nem os outros

@@ -134,6 +134,11 @@ Scenario: [AC-18] Ignorar resposta atrasada de uma cidade anterior
 
 ### FR-02 — Consultar condições atuais
 
+O hero inclui ícone decorativo da condição, umidade relativa (%), vento a 10 m
+(km/h), precipitação (mm) e pressão à superfície (hPa). Cada métrica ausente
+é indicada como “Indisponível”, sem ocultar as demais. Alternar a unidade de
+temperatura não altera as unidades dessas métricas.
+
 ```gherkin
 Scenario: [AC-07] Exibir a temperatura e a condição atual
 	Given que "Lisboa, Portugal" está selecionada
@@ -143,6 +148,7 @@ Scenario: [AC-07] Exibir a temperatura e a condição atual
 	Then a interface exibe "Lisboa, Portugal"
 	And identifica "18 °C" como a temperatura atual
 	And exibe "Parcialmente nublado" como condição atual
+	And exibe as métricas disponíveis com suas unidades e identifica cada métrica ausente como "Indisponível"
 ```
 
 ```gherkin
@@ -166,6 +172,11 @@ Scenario: [AC-08] Não apresentar temperatura ausente como valor válido
 
 ### FR-03 — Consultar previsão
 
+Cada card inclui dia da semana e data local, ícone decorativo e probabilidade
+máxima diária de precipitação em %. Probabilidade ausente é indicada como
+“Indisponível”; 0 % e 100 % são válidos. O grid usa duas colunas na base,
+três em `sm` e cinco em `lg`. Lista vazia informa que a previsão está indisponível.
+
 ```gherkin
 Scenario: [AC-09] Exibir cinco resumos diários completos
 	Given que a data local atual retornada para a cidade é 27/10/2026
@@ -180,6 +191,7 @@ Scenario: [AC-09] Exibir cinco resumos diários completos
 	When a consulta meteorológica termina com sucesso
 	Then a previsão exibe exatamente cinco itens diários, em ordem cronológica
 	And cada item exibe a data, condição, temperaturas mínima e máxima com unidade
+	And cada item exibe a probabilidade máxima diária de chuva em % ou indica sua indisponibilidade
 	And cada item corresponde aos valores retornados para a mesma data
 ```
 

@@ -76,6 +76,43 @@ pnpm test:coverage   # cobertura
 pnpm test:e2e        # testes E2E (Playwright)
 ```
 
+### Demonstração da UI com mock
+
+Execute `pnpm dev` e abra a URL indicada pelo Vite. A tela começa no estado
+inicial. Qualquer busca válida mostra o exemplo fixo de Porto, Portugal, sem
+consultar a API. Os controles “Estados de demonstração” permitem visualizar
+carregamento, vazio, erro e sucesso; “Tentar novamente” retorna ao mock.
+
+O seletor °C/°F converte a temperatura atual e todas as mínimas/máximas apenas
+na renderização, preservando o mock. A unidade volta a Celsius ao recarregar.
+Datas e valores são fictícios; a integração com busca/seleção e API está pendente.
+
+Para validar o fluxo e o layout em 320, 375, 768, 1024 e 1440 px:
+
+```bash
+pnpm exec playwright test tests/e2e/mock-layout.spec.ts --project=chromium --workers=1
+```
+
+Se o Chromium não iniciar por bibliotecas de sistema ausentes, execute
+`pnpm exec playwright install-deps chromium` antes dos testes.
+
+### Acessibilidade e responsividade da demonstração
+
+- Busca inválida foca o campo; busca válida e retry focam o conteúdo.
+- Vazio, sucesso e troca de unidade são anunciados sem retirar foco dos
+  controles de demonstração/unidade.
+- Foco visível, botões com alvo mínimo de 44 × 44 px e movimento reduzido.
+- Cards suportam 320 px com fonte a 200% e textos longos, sem transbordamento.
+
+```bash
+pnpm exec playwright test tests/e2e/accessibility.spec.ts tests/e2e/mock-layout.spec.ts --project=chromium --workers=1
+```
+
+Esses testes verificam teclado, contraste de combinações representativas,
+reflow e movimento reduzido no Chromium. Não certificam conformidade WCAG
+completa; permanecem pendentes validação manual com leitores de tela,
+Safari/VoiceOver, alto contraste e zoom nativo do navegador.
+
 ---
 
 ## Arquitetura do app
@@ -88,7 +125,7 @@ src/
 ├── services/        # acesso a dados (Open-Meteo) isolado
 ├── lib/             # funções puras (conversão, formatação, códigos WMO)
 ├── types/           # contratos compartilhados
-├── styles/          # Tailwind + estilos globais
+├── index.css        # Tailwind + estilos globais
 ├── App.tsx          # composição da tela
 └── main.tsx         # bootstrap React
 ```
