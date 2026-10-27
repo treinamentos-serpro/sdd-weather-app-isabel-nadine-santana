@@ -4,6 +4,8 @@ import { formatReferenceTime } from '../lib/time';
 import { getWeatherCondition } from '../lib/weatherCodes';
 import type { City, CurrentWeather as CurrentWeatherData, Unit } from '../types/weather';
 
+const metricFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
 interface CurrentWeatherProps {
   city: City;
   current: CurrentWeatherData;
@@ -20,7 +22,10 @@ export default function CurrentWeather({ city, current, unit }: CurrentWeatherPr
     current.utcOffsetSeconds,
   );
   const location = [city.admin1, city.country].filter(Boolean).join(', ');
-  const numberFormat = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+  const formatMetric = (value: number | null | undefined, suffix: string): string =>
+    typeof value === 'number' && Number.isFinite(value)
+      ? `${metricFormatter.format(value)} ${suffix}`
+      : 'Indisponível';
   const metrics = [
     { label: 'Umidade', value: current.humidityPercent, suffix: '%' },
     { label: 'Vento', value: current.windSpeedKmh, suffix: 'km/h' },
@@ -63,7 +68,7 @@ export default function CurrentWeather({ city, current, unit }: CurrentWeatherPr
           <div key={label} className="min-w-0 rounded-xl border border-white/10 bg-white/5 p-3">
             <dt className="text-sm text-slate-300">{label}</dt>
             <dd className="mt-1 break-words text-lg font-semibold">
-              {value === null ? 'Indisponível' : `${numberFormat.format(value)} ${suffix}`}
+              {formatMetric(value, suffix)}
             </dd>
           </div>
         ))}

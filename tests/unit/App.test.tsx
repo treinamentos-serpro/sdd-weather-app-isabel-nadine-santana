@@ -58,6 +58,7 @@ describe('App', () => {
     render(<App />);
     await submitSearch('  Lisboa  ');
     expect(screen.getByRole('status')).toHaveTextContent('Carregando dados meteorológicos...');
+    expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByRole('button', { name: 'Buscar' })).toBeDisabled();
     expect(screen.getByLabelText('Nome da cidade')).toBeDisabled();
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
@@ -70,6 +71,7 @@ describe('App', () => {
     expect(screen.getByRole('heading', { name: 'Lisboa' })).toBeInTheDocument();
     expect(screen.getAllByRole('article')).toHaveLength(5);
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveAttribute('aria-busy', 'false');
     expect(screen.getByRole('main')).toHaveFocus();
     expect(searchCities).toHaveBeenCalledExactlyOnceWith('Lisboa');
   });
@@ -89,10 +91,14 @@ describe('App', () => {
   });
 
   it('shows service error and retries the last search through ErrorState', async () => {
-    vi.mocked(searchCities).mockRejectedValueOnce(new WeatherServiceError('Falha de rede.'));
+    vi.mocked(searchCities).mockRejectedValueOnce(
+      new WeatherServiceError('Não foi possível concluir a busca. Tente novamente.'),
+    );
     render(<App />);
     const user = await submitSearch();
-    expect(screen.getByRole('alert')).toHaveTextContent('Falha de rede.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Não foi possível concluir a busca. Tente novamente.',
+    );
     expect(screen.queryByRole('article')).not.toBeInTheDocument();
     expect(screen.getByRole('main')).toHaveFocus();
     await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
@@ -120,10 +126,12 @@ describe('App', () => {
     expect(getWeather).toHaveBeenCalledTimes(1);
 
     vi.mocked(getWeather).mockRejectedValueOnce(
-      new WeatherServiceError('A requisição demorou demais.'),
+      new WeatherServiceError('A consulta demorou demais. Tente novamente.'),
     );
     await submitSearch('Porto');
-    expect(screen.getByRole('alert')).toHaveTextContent('A requisição demorou demais.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'A consulta demorou demais. Tente novamente.',
+    );
     expect(main.queryByRole('article')).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Tentar novamente' }));
     expect(main.getAllByText(/°F$/)).toHaveLength(11);

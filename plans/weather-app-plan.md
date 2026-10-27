@@ -295,10 +295,13 @@ Usar Open-Meteo diretamente no navegador, sem chave de API para este uso. Os exe
     não-ok. Datas extras são ignoradas; o transporte usa `fetchWithTimeout`.
 
 O helper compartilhado `fetchWithTimeout` usa `AbortController` para cancelar
-o `fetch` após 10 segundos e limpa o timer no `finally`, em sucesso ou falha.
-Converte `AbortError` em `WeatherServiceError` com a mensagem
-“A requisição demorou demais.” e falhas de rede em “Falha de rede.”.
-Os erros HTTP continuam sendo tratados por cada operação, fora do helper.
+a solicitação completa (incluindo a leitura do JSON) após 10 segundos e limpa o
+timer no `finally`, em sucesso ou falha. Recebe mensagens próprias da etapa:
+“A busca demorou demais. Tente novamente.” para geocoding e
+“A consulta demorou demais. Tente novamente.” para forecast. Falhas de rede,
+HTTP, JSON inválido e estruturas inesperadas usam mensagens amigáveis por etapa:
+“Não foi possível concluir a busca. Tente novamente.” ou
+“Não foi possível carregar o clima. Tente novamente.”.
 
 Montar parâmetros com `URLSearchParams`, verificar status HTTP e validar o JSON antes da normalização. `current_units` e `daily_units` descrevem as unidades da resposta e podem ser conferidos na validação; não são campos do modelo de domínio. Não depender de campos externos além dos necessários aos contratos. Antes do lançamento, confirmar nos termos oficiais do provedor os limites de uso, atribuição exigida e cobertura para as localidades previstas; essa confirmação é bloqueio de publicação.
 
@@ -320,8 +323,9 @@ substitui, neste incremento, a proposta de estados separados abaixo.
 o clima da primeira; lista vazia termina em `empty` sem forecast. Entrada
 vazia termina em `error` com “O nome da cidade é obrigatório.”, sem rede.
 `selectCity` consulta somente o clima e preserva query/lista de cidades.
-Erros dos services são expostos por mensagem, com fallback explícito para
-rejeições sem mensagem. `retry` repete a última ação pública com seus argumentos;
+Erros tipados dos services são expostos por mensagem amigável; rejeições
+inesperadas usam fallback amigável específico da etapa, sem expor mensagens
+técnicas. `retry` repete a última ação pública com seus argumentos;
 se a busca falhar no forecast, repete busca e forecast. Antes de qualquer ação,
 retry não faz nada. Cada ação limpa dados/erro anteriores e invalida operações
 mais antigas; após desmontagem, respostas pendentes são ignoradas.

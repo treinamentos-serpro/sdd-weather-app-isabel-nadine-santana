@@ -4,6 +4,8 @@ import { formatTemperature } from '../lib/temperature';
 import { getWeatherCondition } from '../lib/weatherCodes';
 import type { ForecastDay, Unit } from '../types/weather';
 
+const probabilityFormatter = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
+
 interface ForecastCardProps {
   day: ForecastDay;
   unit: Unit;
@@ -15,9 +17,12 @@ export default function ForecastCard({ day, unit }: ForecastCardProps) {
   const maximum = formatTemperature(day.temperatureMaxC, unit);
   const minimum = formatTemperature(day.temperatureMinC, unit);
   const probability =
-    day.precipitationProbabilityPercent === null
+    typeof day.precipitationProbabilityPercent !== 'number' ||
+    !Number.isFinite(day.precipitationProbabilityPercent) ||
+    day.precipitationProbabilityPercent < 0 ||
+    day.precipitationProbabilityPercent > 100
       ? 'Indisponível'
-      : `${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 }).format(day.precipitationProbabilityPercent)} %`;
+      : `${probabilityFormatter.format(day.precipitationProbabilityPercent)} %`;
 
   return (
     <article

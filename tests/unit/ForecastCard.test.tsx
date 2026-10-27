@@ -82,4 +82,21 @@ describe('ForecastCard', () => {
     expect(screen.queryByText('0 °F')).not.toBeInTheDocument();
     expect(screen.getByText('30 %')).toBeInTheDocument();
   });
+
+  it('does not render non-finite forecast values as NaN or Infinity', () => {
+    render(
+      <ForecastCard
+        day={{
+          ...day,
+          temperatureMaxC: Number.NaN,
+          precipitationProbabilityPercent: Number.POSITIVE_INFINITY,
+        }}
+        unit="celsius"
+      />,
+    );
+
+    expect(screen.getAllByText('Indisponível')).toHaveLength(2);
+    expect(screen.getByText('10 °C')).toBeInTheDocument();
+    expect(screen.queryByText(/NaN|Infinity|undefined/)).not.toBeInTheDocument();
+  });
 });

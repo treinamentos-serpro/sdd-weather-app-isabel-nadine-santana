@@ -64,6 +64,7 @@ export default function App() {
           ref={mainRef}
           aria-label="Clima e previsão"
           tabIndex={-1}
+          aria-busy={status === 'loading'}
           className="space-y-8 rounded-xl [overflow-wrap:anywhere] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-4 focus-visible:ring-offset-night-900"
         >
           {status === 'idle' && (

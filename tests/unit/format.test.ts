@@ -11,6 +11,10 @@ describe('formatDayLabel', () => {
   ])('formats local date %s without shifting the calendar day', (date, label) => {
     expect(formatDayLabel(date)).toBe(label);
   });
+
+  it.each(['', '2026-02-30', 'not-a-date'])('falls back for invalid date %s', (date) => {
+    expect(formatDayLabel(date)).toBe('Data indisponível');
+  });
 });
 
 describe('getDayLabel', () => {

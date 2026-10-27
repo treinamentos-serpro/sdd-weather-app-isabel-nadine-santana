@@ -37,4 +37,12 @@ describe('temperature', () => {
     expect(formatTemperature(null, 'celsius')).toBeNull();
     expect(formatTemperature(null, 'fahrenheit')).toBeNull();
   });
+
+  it.each([undefined, Number.NaN, Number.POSITIVE_INFINITY])(
+    'treats non-finite or absent temperature %s as unavailable',
+    (temperature) => {
+      expect(convertTemperature(temperature, 'fahrenheit')).toBeNull();
+      expect(formatTemperature(temperature, 'fahrenheit')).toBeNull();
+    },
+  );
 });

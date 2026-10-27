@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getWeather, searchCities } from '../services/weatherService';
+import { getWeather, searchCities, WeatherServiceError } from '../services/weatherService';
 import type { City, WeatherData } from '../types/weather';
 
 type Operation = { type: 'search'; name: string } | { type: 'select'; city: City };
@@ -34,6 +34,10 @@ export function useWeather() {
   const execute = useCallback(async (operation: Operation): Promise<void> => {
     const id = ++requestId.current;
     lastOperation.current = operation;
+    let fallbackError =
+      operation.type === 'search'
+        ? 'Não foi possível concluir a busca. Tente novamente.'
+        : 'Não foi possível carregar o clima. Tente novamente.';
     setState((previous) => ({
       ...previous,
       status: 'loading',
@@ -47,7 +51,7 @@ export function useWeather() {
       let city: City;
       if (operation.type === 'search') {
         if (!operation.name) {
-          throw new Error('O nome da cidade é obrigatório.');
+          throw new WeatherServiceError('O nome da cidade é obrigatório.');
         }
         const cities = await searchCities(operation.name);
         if (id !== requestId.current) return;
@@ -64,6 +68,7 @@ export function useWeather() {
         city = operation.city;
       }
 
+      fallbackError = 'Não foi possível carregar o clima. Tente novamente.';
       const data = await getWeather(city);
       if (id !== requestId.current) return;
       setState((previous) => ({ ...previous, status: 'success', data }));
@@ -72,7 +77,7 @@ export function useWeather() {
       setState((previous) => ({
         ...previous,
         status: 'error',
-        error: error instanceof Error ? error.message : 'Não foi possível consultar o clima.',
+        error: error instanceof WeatherServiceError ? error.message : fallbackError,
       }));
     }
   }, []);

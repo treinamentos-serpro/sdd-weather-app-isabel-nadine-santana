@@ -14,7 +14,7 @@ test('geocoding without results shows an editable empty state without requesting
     if (request.url().startsWith('https://api.open-meteo.com/')) forecastCalls += 1;
   });
   await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
-    route.fulfill({ json: {} }),
+    route.fulfill({ json: { results: [] } }),
   );
   await page.goto('/');
   await searchCity(page, 'Cidade inexistente');
@@ -25,6 +25,56 @@ test('geocoding without results shows an editable empty state without requesting
   await expect(page.getByRole('searchbox', { name: 'Nome da cidade' })).toBeEditable();
   await page.getByRole('searchbox', { name: 'Nome da cidade' }).fill('Outra cidade');
   expect(forecastCalls).toBe(0);
+});
+
+test('empty and whitespace-only searches do not request geocoding', async ({ page }) => {
+  let geocodingCalls = 0;
+  page.on('request', (request) => {
+    if (request.url().startsWith('https://geocoding-api.open-meteo.com/')) geocodingCalls += 1;
+  });
+  await page.goto('/');
+  const searchbox = page.getByRole('searchbox', { name: 'Nome da cidade' });
+  const searchButton = page.getByRole('button', { name: 'Buscar', exact: true });
+
+  for (const query of ['', '   ']) {
+    await searchbox.fill(query);
+    await searchButton.click();
+    await expect(page.getByRole('alert')).toHaveText('O nome da cidade é obrigatório.');
+    await expect(searchbox).toBeEditable();
+    await expect(searchbox).toHaveAttribute('aria-invalid', 'true');
+  }
+
+  expect(geocodingCalls).toBe(0);
+});
+
+test('special characters are preserved through geocoding and displayed in the result', async ({
+  page,
+}) => {
+  const query = "  Aix-en-Provence d'Água & região  ";
+  let requestedName: string | null = null;
+  await page.route('https://geocoding-api.open-meteo.com/**', (route) => {
+    requestedName = new URL(route.request().url()).searchParams.get('name');
+    return route.fulfill({
+      json: {
+        results: [
+          {
+            id: 1,
+            name: "Aix-en-Provence d'Água",
+            admin1: 'Provence-Alpes-Côte d’Azur',
+            country: 'França',
+            latitude: 43.5297,
+            longitude: 5.4474,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto('/');
+  await searchCity(page, query);
+
+  await expect(page.getByRole('heading', { name: "Aix-en-Provence d'Água" })).toBeVisible();
+  await expect(page.getByText('Provence-Alpes-Côte d’Azur, França')).toBeVisible();
+  expect(requestedName).toBe("Aix-en-Provence d'Água & região");
 });
 
 test('search and reversible unit conversion work at 375x812', async ({ page }) => {
@@ -67,9 +117,9 @@ for (const failure of ['http', 'network', 'incomplete'] as const) {
     await searchCity(page, 'Porto');
 
     const message = {
-      http: 'Falha ao consultar o clima (HTTP 503).',
-      network: 'Falha de rede.',
-      incomplete: 'Resposta meteorologica incompleta: current ou daily ausente.',
+      http: 'Não foi possível carregar o clima. Tente novamente.',
+      network: 'Não foi possível carregar o clima. Tente novamente.',
+      incomplete: 'Não foi possível carregar o clima. Tente novamente.',
     }[failure];
     await expect(page.getByRole('alert')).toContainText(message);
     await expect(page.getByRole('status')).toHaveCount(0);
@@ -115,6 +165,74 @@ test('partial forecast preserves valid fields and does not convert missing value
   await expect(page.getByRole('alert')).toHaveCount(0);
 });
 
+test('forecast with omitted fields keeps the five days and shows safe fallbacks', async ({
+  page,
+}) => {
+  await page.route('https://api.open-meteo.com/**', (route) =>
+    route.fulfill({
+      json: {
+        current: {
+          time: '2026-10-27T14:00',
+          weather_code: 0,
+        },
+        daily: {
+          time: ['2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31'],
+          weather_code: [0, 1, 2, 3, 45],
+          temperature_2m_max: [20, 21, 22, 23, 24],
+          precipitation_probability_max: [10],
+        },
+      },
+    }),
+  );
+  await page.goto('/');
+  await searchCity(page, 'Porto');
+
+  const current = page.getByRole('region', { name: 'Porto', exact: true });
+  const forecast = page.getByRole('region', { name: 'Previsão de 5 dias' });
+  const cards = forecast.getByRole('article');
+  await expect(current.getByText('Temperatura indisponível', { exact: true })).toBeVisible();
+  await expect(cards).toHaveCount(5);
+  await expect(cards.nth(0).getByText('20 °C', { exact: true })).toBeVisible();
+  await expect(cards.nth(0).getByText('10 %', { exact: true })).toBeVisible();
+  await expect(cards.nth(0).getByText('Indisponível', { exact: true })).toBeVisible();
+  await expect(cards.nth(1).getByText('21 °C', { exact: true })).toBeVisible();
+  await expect(cards.nth(1).getByText('Indisponível', { exact: true })).toHaveCount(2);
+  await expect(page.getByText(/NaN|undefined|Infinity/)).toHaveCount(0);
+});
+
+test('geocoding offline shows a friendly error and retry repeats the city search', async ({
+  page,
+}) => {
+  let attempts = 0;
+  await page.route('https://geocoding-api.open-meteo.com/**', (route) => {
+    attempts += 1;
+    if (attempts === 1) return route.abort('failed');
+    return route.fulfill({
+      json: {
+        results: [
+          {
+            id: 1,
+            name: 'Porto',
+            admin1: 'Porto',
+            country: 'Portugal',
+            latitude: 41.1496,
+            longitude: -8.6109,
+          },
+        ],
+      },
+    });
+  });
+  await page.goto('/');
+  await searchCity(page, 'Porto');
+
+  await expect(page.getByRole('alert')).toHaveText(
+    'Não foi possível concluir a busca. Tente novamente.',
+  );
+  await page.getByRole('button', { name: 'Tentar novamente' }).click();
+  await expect(page.getByRole('region', { name: 'Porto', exact: true })).toBeVisible();
+  expect(attempts).toBe(2);
+});
+
 test('unit selected while forecast is pending applies to all returned temperatures', async ({
   page,
 }) => {
@@ -151,7 +269,9 @@ test('forecast timeout ends loading after ten seconds and permits retry', async 
   await expect(page.getByRole('status')).toContainText('Carregando dados meteorológicos');
   await page.clock.fastForward(10_000);
 
-  await expect(page.getByRole('alert')).toContainText('A requisição demorou demais.');
+  await expect(page.getByRole('alert')).toContainText(
+    'A consulta demorou demais. Tente novamente.',
+  );
   await expect(page.getByRole('status')).toHaveCount(0);
   await expect(page.getByRole('article')).toHaveCount(0);
   await page.getByRole('button', { name: 'Tentar novamente' }).click();
@@ -233,7 +353,9 @@ test('search, units, errors, retry and reload use the real hook with intercepted
   await expect(page.getByRole('main').getByText(/°F$/)).toHaveCount(11);
   expect(forecastCalls).toBe(1);
   await searchCity(page, 'Erro');
-  await expect(page.getByRole('alert')).toContainText('HTTP 500');
+  await expect(page.getByRole('alert')).toHaveText(
+    'Não foi possível concluir a busca. Tente novamente.',
+  );
   await expect(page.getByRole('article')).toHaveCount(0);
   await page.route('https://geocoding-api.open-meteo.com/**', (route) =>
     route.fulfill({

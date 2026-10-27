@@ -32,4 +32,14 @@ describe('formatReferenceTime', () => {
       '27/10/2026 às 14:30 — Europe/Lisbon',
     );
   });
+
+  it.each([undefined, '', 'not-a-date'])('returns no reference for invalid time %s', (time) => {
+    expect(formatReferenceTime(time, null, null)).toBeNull();
+  });
+
+  it('falls back safely when the timezone or offset is invalid', () => {
+    expect(formatReferenceTime('2026-10-27T14:30', 'Invalid/Timezone', Number.NaN)).toBe(
+      '27/10/2026 às 14:30 — Fuso indisponível',
+    );
+  });
 });

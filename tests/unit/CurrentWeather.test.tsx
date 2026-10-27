@@ -121,6 +121,23 @@ describe('CurrentWeather', () => {
     expect(screen.getByText('0 mm')).toBeInTheDocument();
   });
 
+  it('does not render non-finite measurements as NaN or Infinity', () => {
+    render(
+      <CurrentWeather
+        city={mockCity}
+        current={{
+          ...current,
+          humidityPercent: Number.NaN,
+          windSpeedKmh: Number.POSITIVE_INFINITY,
+        }}
+        unit="celsius"
+      />,
+    );
+
+    expect(screen.getAllByText('Indisponível')).toHaveLength(2);
+    expect(screen.queryByText(/NaN|Infinity|undefined/)).not.toBeInTheDocument();
+  });
+
   it('falls back to coordinates when region and country are absent', () => {
     render(
       <CurrentWeather

@@ -36,6 +36,8 @@ const weatherCodes: Readonly<Partial<Record<number, WeatherCondition>>> = {
 
 const unavailable: WeatherCondition = { label: 'Condição indisponível', icon: '❔' };
 
-export function getWeatherCondition(code: number | null): WeatherCondition {
-  return code === null ? unavailable : (weatherCodes[code] ?? unavailable);
+export function getWeatherCondition(code: number | null | undefined): WeatherCondition {
+  return typeof code !== 'number' || !Number.isFinite(code)
+    ? unavailable
+    : (weatherCodes[code] ?? unavailable);
 }

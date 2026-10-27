@@ -4,12 +4,19 @@ export function unitLabel(unit: Unit): string {
   return unit === 'celsius' ? '°C' : '°F';
 }
 
-export function convertTemperature(temperatureC: number | null, unit: Unit): number | null {
-  if (temperatureC === null) return null;
-  return unit === 'fahrenheit' ? (temperatureC * 9) / 5 + 32 : temperatureC;
+export function convertTemperature(
+  temperatureC: number | null | undefined,
+  unit: Unit,
+): number | null {
+  if (typeof temperatureC !== 'number' || !Number.isFinite(temperatureC)) return null;
+  const temperature = unit === 'fahrenheit' ? (temperatureC * 9) / 5 + 32 : temperatureC;
+  return Number.isFinite(temperature) ? temperature : null;
 }
 
-export function formatTemperature(temperatureC: number | null, unit: Unit): string | null {
+export function formatTemperature(
+  temperatureC: number | null | undefined,
+  unit: Unit,
+): string | null {
   const temperature = convertTemperature(temperatureC, unit);
   if (temperature === null) return null;
 

@@ -170,6 +170,10 @@ describe('getWeather', () => {
     { current: {}, daily: { time: ['2026-10-27'] } },
     {
       current: {},
+      daily: { time: ['2026-02-30', '2026-03-01', '2026-03-02', '2026-03-03', '2026-03-04'] },
+    },
+    {
+      current: {},
       daily: { time: ['2026-10-27', null, '2026-10-29', '2026-10-30', '2026-10-31'] },
     },
   ])('throws WeatherServiceError for incomplete or invalid responses: %j', async (data) => {
@@ -178,19 +182,23 @@ describe('getWeather', () => {
     await expect(getWeather(city)).rejects.toThrow(WeatherServiceError);
   });
 
-  it.each([400, 429, 500])('throws WeatherServiceError for HTTP %i', async (status) => {
+  it.each([400, 429, 500])('shows a friendly message for HTTP %i', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('erro', { status })));
 
-    await expect(getWeather(city)).rejects.toThrow(WeatherServiceError);
-    await expect(getWeather(city)).rejects.toThrow(`HTTP ${status}`);
+    await expect(getWeather(city)).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'Não foi possível carregar o clima. Tente novamente.',
+    });
   });
 
   it('converts network failures into WeatherServiceError', async () => {
     const error = new TypeError('Failed to fetch');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error));
 
-    await expect(getWeather(city)).rejects.toThrow(WeatherServiceError);
-    await expect(getWeather(city)).rejects.toThrow('Falha de rede.');
+    await expect(getWeather(city)).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'Não foi possível carregar o clima. Tente novamente.',
+    });
   });
 });
 
@@ -254,19 +262,23 @@ describe('searchCities', () => {
     await expect(searchCities('Cidade inexistente')).resolves.toEqual([]);
   });
 
-  it.each([400, 429, 500])('throws WeatherServiceError for HTTP %i', async (status) => {
+  it.each([400, 429, 500])('shows a friendly message for HTTP %i', async (status) => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('erro', { status })));
 
-    await expect(searchCities('Porto')).rejects.toThrow(WeatherServiceError);
-    await expect(searchCities('Porto')).rejects.toThrow(`HTTP ${status}`);
+    await expect(searchCities('Porto')).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'Não foi possível concluir a busca. Tente novamente.',
+    });
   });
 
   it('converts network failures into WeatherServiceError instead of returning an empty list', async () => {
     const error = new TypeError('Failed to fetch');
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error));
 
-    await expect(searchCities('Porto')).rejects.toThrow(WeatherServiceError);
-    await expect(searchCities('Porto')).rejects.toThrow('Falha de rede.');
+    await expect(searchCities('Porto')).rejects.toMatchObject({
+      name: 'WeatherServiceError',
+      message: 'Não foi possível concluir a busca. Tente novamente.',
+    });
   });
 
   it.each([
@@ -282,13 +294,20 @@ describe('searchCities', () => {
 });
 
 describe('fetchWithTimeout', () => {
+  const messages = {
+    failure: 'Falha ao carregar.',
+    timeout: 'A solicitação demorou demais.',
+  };
+
   it.each([200, 500])('clears the timer when fetch resolves with HTTP %i', async (status) => {
     vi.useFakeTimers();
     const response = new Response('{}', { status });
     const fetchMock = vi.fn().mockResolvedValue(response);
     vi.stubGlobal('fetch', fetchMock);
 
-    await expect(fetchWithTimeout('https://example.com')).resolves.toBe(response);
+    await expect(
+      fetchWithTimeout('https://example.com', async (result) => result, messages),
+    ).resolves.toBe(response);
 
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith('https://example.com', {
       signal: expect.any(AbortSignal),
@@ -299,16 +318,48 @@ describe('fetchWithTimeout', () => {
   });
 
   it.each([
-    [new DOMException('Aborted', 'AbortError'), 'A requisição demorou demais.'],
-    [new TypeError('Failed to fetch'), 'Falha de rede.'],
+    [new DOMException('Aborted', 'AbortError'), messages.timeout],
+    [new TypeError('Failed to fetch'), messages.failure],
   ])('converts %s and clears the timer after rejection', async (error, message) => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(error));
 
-    await expect(fetchWithTimeout('https://example.com')).rejects.toMatchObject({
+    await expect(
+      fetchWithTimeout('https://example.com', async (response) => response, messages),
+    ).rejects.toMatchObject({ name: 'WeatherServiceError', message });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the timeout active while reading the response body', async () => {
+    vi.useFakeTimers();
+    let signal: AbortSignal | undefined;
+    const response = new Response('{}');
+    vi.spyOn(response, 'json').mockImplementation(
+      () =>
+        new Promise((_resolve, reject) => {
+          signal?.addEventListener(
+            'abort',
+            () => reject(new DOMException('Aborted', 'AbortError')),
+            { once: true },
+          );
+        }),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, options: RequestInit) => {
+        signal = options.signal ?? undefined;
+        return Promise.resolve(response);
+      }),
+    );
+
+    const pending = fetchWithTimeout('https://example.com', (result) => result.json(), messages);
+    const rejection = expect(pending).rejects.toMatchObject({
       name: 'WeatherServiceError',
-      message,
+      message: messages.timeout,
     });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await rejection;
+    expect(signal?.aborted).toBe(true);
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -336,7 +387,10 @@ describe('fetchWithTimeout', () => {
     const pending = request();
     const rejection = expect(pending).rejects.toMatchObject({
       name: 'WeatherServiceError',
-      message: 'A requisição demorou demais.',
+      message:
+        _name === 'searchCities'
+          ? 'A busca demorou demais. Tente novamente.'
+          : 'A consulta demorou demais. Tente novamente.',
     });
     await vi.advanceTimersByTimeAsync(9_999);
     expect(signal?.aborted).toBe(false);
