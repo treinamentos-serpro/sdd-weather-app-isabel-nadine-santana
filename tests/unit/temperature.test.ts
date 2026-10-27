@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { convertTemperature, formatTemperature } from '../../src/lib/temperature';
+import {
+  convertTemperature,
+  formatTemperature,
+  unitLabel,
+} from '../../src/lib/temperature';
 
 describe('temperature', () => {
   it.each([
+    [0, 32],
+    [100, 212],
+    [-40, -40],
     [20, 68],
     [21.3, 70.34],
-    [0, 32],
-    [-40, -40],
   ])('converts %s Celsius to Fahrenheit', (celsius, fahrenheit) => {
     expect(convertTemperature(celsius, 'fahrenheit')).toBeCloseTo(fahrenheit);
     expect(convertTemperature(celsius, 'celsius')).toBe(celsius);
+  });
+
+  it('returns the label for each temperature unit', () => {
+    expect(unitLabel('celsius')).toBe('°C');
+    expect(unitLabel('fahrenheit')).toBe('°F');
   });
 
   it('formats pt-BR with at most one decimal and an explicit unit', () => {

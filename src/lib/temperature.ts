@@ -1,5 +1,9 @@
 import type { Unit } from '../types/weather';
 
+export function unitLabel(unit: Unit): string {
+  return unit === 'celsius' ? '°C' : '°F';
+}
+
 export function convertTemperature(temperatureC: number | null, unit: Unit): number | null {
   if (temperatureC === null) return null;
   return unit === 'fahrenheit' ? (temperatureC * 9) / 5 + 32 : temperatureC;
@@ -12,5 +16,5 @@ export function formatTemperature(temperatureC: number | null, unit: Unit): stri
   const formatted = new Intl.NumberFormat('pt-BR', {
     maximumFractionDigits: 1,
   }).format(temperature);
-  return `${formatted} ${unit === 'celsius' ? '°C' : '°F'}`;
+  return `${formatted} ${unitLabel(unit)}`;
 }

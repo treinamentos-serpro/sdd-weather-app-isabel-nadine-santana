@@ -120,7 +120,7 @@ describe('getWeather', () => {
 
   it('keeps missing values null without shifting daily indices or inventing current values', async () => {
     const data = {
-      current: {},
+      current: { precipitation: null },
       daily: {
         time: forecastResponse().daily.time,
         temperature_2m_min: [0, null, 14],

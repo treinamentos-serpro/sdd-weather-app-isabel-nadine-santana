@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import CurrentWeather from '../../src/components/CurrentWeather';
-import type { CurrentWeather as CurrentWeatherData } from '../../src/types/weather';
+import UnitToggle from '../../src/components/UnitToggle';
+import type { CurrentWeather as CurrentWeatherData, Unit } from '../../src/types/weather';
 import { mockCity, mockWeatherData } from '../../src/types/weather';
 
 const current: CurrentWeatherData = {
@@ -48,6 +51,29 @@ describe('CurrentWeather', () => {
     rerender(<CurrentWeather city={mockCity} current={data} unit="celsius" />);
     expect(screen.getByText('20 °C')).toBeInTheDocument();
     expect(data.temperatureC).toBe(20);
+  });
+
+  it('updates the displayed temperature when the unit toggle is changed', async () => {
+    const user = userEvent.setup();
+    const zeroDegrees = { ...current, temperatureC: 0 };
+
+    function WeatherWithUnitToggle() {
+      const [unit, setUnit] = useState<Unit>('celsius');
+
+      return (
+        <>
+          <UnitToggle unit={unit} onChange={setUnit} />
+          <CurrentWeather city={mockCity} current={zeroDegrees} unit={unit} />
+        </>
+      );
+    }
+
+    render(<WeatherWithUnitToggle />);
+
+    expect(screen.getByText('0 °C')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '°F' }));
+
+    expect(screen.getByText('32 °F')).toBeInTheDocument();
   });
 
   it('reports absent fields independently without substituting zero', () => {

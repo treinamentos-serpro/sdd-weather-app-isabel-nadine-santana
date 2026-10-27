@@ -1,8 +1,8 @@
 import type { Page } from '@playwright/test';
-import { mockCity, mockWeatherData } from '../../src/types/weather';
+import { mockCity, mockWeatherData, type WeatherData } from '../../src/types/weather';
 
-export async function mockWeatherApi(page: Page) {
-  const { current, days } = mockWeatherData;
+export async function mockWeatherApi(page: Page, weather: WeatherData = mockWeatherData) {
+  const { current, days } = weather;
   await page.route('https://geocoding-api.open-meteo.com/**', (route) => {
     const name = new URL(route.request().url()).searchParams.get('name');
     if (name === 'Erro') return route.fulfill({ status: 500, body: '{}' });
